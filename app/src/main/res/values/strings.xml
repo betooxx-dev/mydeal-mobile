@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MyDeal</string>
+
+    <!-- Auth Screens -->
+    <string name="login">Iniciar Sesión</string>
+    <string name="register">Registrarse</string>
+    <string name="email">Correo Electrónico</string>
+    <string name="password">Contraseña</string>
+    <string name="confirm_password">Confirmar Contraseña</string>
+    <string name="forgot_password">¿Olvidaste tu contraseña?</string>
+    <string name="no_account">¿No tienes cuenta? Regístrate</string>
+    <string name="have_account">¿Ya tienes cuenta? Inicia sesión</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard">Panel Principal</string>
+    <string name="income">Ingresos</string>
+    <string name="expense">Gastos</string>
+    <string name="balance">Balance</string>
+    <string name="transactions">Transacciones</string>
+    <string name="reports">Reportes</string>
+    <string name="settings">Configuración</string>
+
+    <!-- Transactions -->
+    <string name="add_transaction">Agregar Transacción</string>
+    <string name="edit_transaction">Editar Transacción</string>
+    <string name="transaction_details">Detalles de Transacción</string>
+    <string name="amount">Monto</string>
+    <string name="category">Categoría</string>
+    <string name="date">Fecha</string>
+    <string name="description">Descripción</string>
+    <string name="capture_receipt">Capturar Comprobante</string>
+    <string name="view_receipt">Ver Comprobante</string>
+    <string name="location">Ubicación</string>
+
+    <!-- Notifications -->
+    <string name="notifications">Notificaciones</string>
+    <string name="notification_settings">Configuración de Notificaciones</string>
+    <string name="budget_alerts">Alertas de Presupuesto</string>
+    <string name="payment_reminders">Recordatorios de Pago</string>
+
+    <!-- Errors -->
+    <string name="error_email_empty">El correo electrónico no puede estar vacío</string>
+    <string name="error_email_invalid">Correo electrónico inválido</string>
+    <string name="error_password_empty">La contraseña no puede estar vacía</string>
+    <string name="error_password_short">La contraseña debe tener al menos 6 caracteres</string>
+    <string name="error_passwords_not_match">Las contraseñas no coinciden</string>
+    <string name="error_amount_empty">El monto no puede estar vacío</string>
+    <string name="error_category_empty">Debe seleccionar una categoría</string>
+    <string name="error_description_empty">La descripción no puede estar vacía</string>
+    <string name="error_login_failed">Error al iniciar sesión. Verifica tus credenciales.</string>
+    <string name="error_generic">Ha ocurrido un error. Inténtalo nuevamente.</string>
+
+    <!-- Hardware -->
+    <string name="camera_permission">Permiso de cámara requerido para capturar comprobantes</string>
+    <string name="location_permission">Permiso de ubicación requerido para registrar transacciones</string>
+    <string name="storage_permission">Permiso de almacenamiento requerido para guardar comprobantes</string>
+
+    <!-- Notificaciones -->
+    <string name="notification_reminder_title">Recordatorio de pago</string>
+    <string name="notification_reminder_content">Tienes un pago programado pronto</string>
+</resources>
