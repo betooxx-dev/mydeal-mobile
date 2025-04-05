@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MyDeal"
 include(":app")
- 
+include(":feature-financial")

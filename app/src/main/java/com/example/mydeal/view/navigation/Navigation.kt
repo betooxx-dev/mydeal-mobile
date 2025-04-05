@@ -6,10 +6,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.mydeal.feature_financial.presentation.FinancialCalculatorScreen
 import com.example.mydeal.view.screens.auth.LoginScreen
 import com.example.mydeal.view.screens.auth.RegisterScreen
 import com.example.mydeal.view.screens.dashboard.DashboardScreen
-import com.example.mydeal.view.screens.dashboard.FinancialCalculatorScreen
 import com.example.mydeal.view.screens.dashboard.ReportScreen
 import com.example.mydeal.view.screens.dashboard.TransactionListScreen
 import com.example.mydeal.view.screens.transaction.AddTransactionScreen
@@ -78,7 +78,6 @@ fun AppNavigation(startDestination: String = Screen.Login.route) {
             arguments = listOf(navArgument("transactionId") { type = NavType.StringType })
         ) { backStackEntry ->
             val transactionId = backStackEntry.arguments?.getString("transactionId") ?: ""
-            // Pasamos el ID de transacción y un flag para indicar que estamos editando
             AddTransactionScreen(
                 navController = navController,
                 transactionId = transactionId,
@@ -99,7 +98,7 @@ fun AppNavigation(startDestination: String = Screen.Login.route) {
         }
 
         composable(Screen.FinancialCalculator.route) {
-            FinancialCalculatorScreen(navController)
+            FinancialCalculatorScreen()
         }
     }
 }

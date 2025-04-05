@@ -214,28 +214,34 @@ fun QuickActions(navController: NavController) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Botón de Agregar Transacción
             ActionCard(
                 icon = Icons.Default.Add,
                 title = "Agregar",
                 subtitle = "Transacción",
                 backgroundColor = Color(0xFF1976D2),
-                modifier = Modifier.weight(1f, fill = true).padding(end = 8.dp),
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .padding(end = 8.dp),
                 onClick = { navController.navigate(Screen.AddTransaction.route) }
             )
 
+            // Botón de Ver Transacciones
             ActionCard(
                 icon = Icons.Default.List,
                 title = "Ver",
                 subtitle = "Transacciones",
                 backgroundColor = Color(0xFF4CAF50),
-                modifier = Modifier.weight(1f, fill = true).padding(start = 8.dp),
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .padding(start = 8.dp),
                 onClick = { navController.navigate(Screen.TransactionList.route) }
             )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Acción rápida para ver reportes
+        // Botón de Reportes
         ActionCard(
             icon = Icons.Default.Assessment,
             title = "Ver",
@@ -247,7 +253,7 @@ fun QuickActions(navController: NavController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Botón de calculadora financiera
+        // Botón de Calculadora Financiera
         ActionCard(
             icon = Icons.Default.Calculate,
             title = "Calculadora",

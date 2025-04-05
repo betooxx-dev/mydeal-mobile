@@ -40,6 +40,13 @@ android {
 }
 
 dependencies {
+    // Koin
+    implementation("io.insert-koin:koin-core:3.5.6")
+    implementation("io.insert-koin:koin-android:3.5.6")
+    implementation("io.insert-koin:koin-androidx-compose:3.5.6")
+
+    // Módulo de calculadora financiera
+    implementation(project(":feature-financial"))
     // Core Android
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
