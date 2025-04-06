@@ -1,7 +1,6 @@
 package com.example.mydeal.view.screens.dashboard
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,65 +9,97 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.mydeal.model.api.ApiResponse
+import com.example.mydeal.model.api.RetrofitClient
+import com.example.mydeal.ui.theme.LightGreen
 import com.example.mydeal.view.components.ExpenseCategory
 import com.example.mydeal.view.components.ExpenseChart
-import com.example.mydeal.view.components.ExpenseBarChart
 import com.example.mydeal.view.components.MonthlySummaryChart
-import com.example.mydeal.view.navigation.Screen
+import kotlinx.coroutines.launch
+import retrofit2.Response
+import retrofit2.http.GET
+import retrofit2.http.Header
 import java.text.NumberFormat
-import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.*
+
+// Interface para el servicio de API - misma que en TransactionListScreen
+interface ReportTransactionApi {
+    @GET("transactions")
+    suspend fun getTransactions(@Header("Authorization") token: String): Response<TransactionApiResponse>
+}
+
+class ReportViewModel : ViewModel() {
+    private val _transactionsResult = MutableLiveData<ApiResponse<List<Transaction>>>()
+    val transactionsResult: LiveData<ApiResponse<List<Transaction>>> = _transactionsResult
+
+    fun fetchTransactions(context: android.content.Context) {
+        _transactionsResult.value = ApiResponse.Loading
+
+        viewModelScope.launch {
+            try {
+                val authService = com.example.mydeal.model.service.AuthService(context)
+                if (!authService.isAuthenticated()) {
+                    _transactionsResult.value = ApiResponse.Error("No autenticado")
+                    return@launch
+                }
+
+                val token = authService.getAuthToken()
+                val api = RetrofitClient.getAuthInstance(context).create(ReportTransactionApi::class.java)
+                val response = api.getTransactions(token)
+
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body != null) {
+                        _transactionsResult.value = ApiResponse.Success(body.data)
+                    } else {
+                        _transactionsResult.value = ApiResponse.Error("Respuesta vacía")
+                    }
+                } else {
+                    _transactionsResult.value = ApiResponse.Error("Error: ${response.code()} - ${response.message()}")
+                }
+            } catch (e: Exception) {
+                _transactionsResult.value = ApiResponse.Error("Error de conexión: ${e.message}")
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReportScreen(navController: NavController) {
-    // Datos simulados para los gráficos y reportes
+fun ReportScreen(
+    navController: NavController,
+    viewModel: ReportViewModel = viewModel()
+) {
+    val context = LocalContext.current
+    val transactionsResult by viewModel.transactionsResult.observeAsState()
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
 
-    // Datos para el gráfico de categorías
-    val expenseCategories = listOf(
-        ExpenseCategory("Alimentación", 3450.0, Color(0xFFE53935)),
-        ExpenseCategory("Transporte", 1200.0, Color(0xFF1976D2)),
-        ExpenseCategory("Entretenimiento", 850.0, Color(0xFFFFA000)),
-        ExpenseCategory("Servicios", 1350.0, Color(0xFF43A047)),
-        ExpenseCategory("Otros", 650.0, Color(0xFF7E57C2))
-    )
-
-    // Datos para el gráfico mensual
-    val monthlyData = listOf(
-        "Ene" to 4500.0,
-        "Feb" to 5200.0,
-        "Mar" to 6800.0,
-        "Abr" to 4900.0,
-        "May" to 5100.0,
-        "Jun" to 4600.0
-    )
-
-    // Totales
-    val totalExpenses = expenseCategories.sumOf { it.amount }
-    val totalIncome = 25000.0
-    val totalSavings = totalIncome - totalExpenses
-    val savingsPercentage = (totalSavings / totalIncome * 100).toInt()
-
-    // Selección del periodo
-    val periods = listOf("Esta semana", "Este mes", "3 meses", "6 meses", "Este año")
-    var selectedPeriod by remember { mutableStateOf(periods[1]) }
+    LaunchedEffect(Unit) {
+        viewModel.fetchTransactions(context)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Reportes y Estadísticas",
+                        text = "Reporte Financiero",
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -80,347 +111,333 @@ fun ReportScreen(navController: NavController) {
                         )
                     }
                 },
-                actions = {
-                    IconButton(onClick = { /* Lógica para compartir reportes */ }) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = "Compartir"
-                        )
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
+                    containerColor = LightGreen,
                     titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    navigationIconContentColor = Color.White
                 )
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-        ) {
-            // Selector de periodo
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+        when (transactionsResult) {
+            is ApiResponse.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "Periodo",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    CircularProgressIndicator()
+                }
+            }
+            is ApiResponse.Error -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        periods.forEach { period ->
-                            FilterChip(
-                                selected = selectedPeriod == period,
-                                onClick = { selectedPeriod = period },
-                                label = { Text(period) },
-                                modifier = Modifier.weight(1f)
+                        Icon(
+                            imageVector = Icons.Default.Error,
+                            contentDescription = null,
+                            tint = Color.Red,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            "Error: ${(transactionsResult as ApiResponse.Error).message}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.Red
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { viewModel.fetchTransactions(context) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = LightGreen
                             )
+                        ) {
+                            Text("Reintentar")
                         }
                     }
                 }
             }
+            is ApiResponse.Success -> {
+                val transactions = (transactionsResult as ApiResponse.Success<List<Transaction>>).data
 
-            // Tarjetas de resumen
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SummaryCard(
-                    title = "Ingresos",
-                    amount = totalIncome,
-                    icon = Icons.Default.ArrowUpward,
-                    iconTint = Color(0xFF43A047),
-                    containerColor = Color(0xFFE8F5E9),
-                    modifier = Modifier.weight(1f)
-                )
-
-                SummaryCard(
-                    title = "Gastos",
-                    amount = totalExpenses,
-                    icon = Icons.Default.ArrowDownward,
-                    iconTint = Color(0xFFE53935),
-                    containerColor = Color(0xFFFFEBEE),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Tarjeta de ahorros
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                if (transactions.isEmpty()) {
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFFE3F2FD)),
+                            .fillMaxSize()
+                            .padding(paddingValues),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Savings,
-                            contentDescription = null,
-                            tint = Color(0xFF1976D2)
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                "No hay transacciones para mostrar",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = Color.Gray
+                            )
+                        }
                     }
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 16.dp)
-                    ) {
-                        Text(
-                            text = "Ahorros del periodo",
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        Text(
-                            text = "${savingsPercentage}% de tus ingresos",
-                            color = Color.Gray,
-                            fontSize = 14.sp
-                        )
-                    }
-
-                    Text(
-                        text = currencyFormatter.format(totalSavings),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = if (totalSavings > 0) Color(0xFF43A047) else Color(0xFFE53935)
-                    )
+                } else {
+                    ReportContent(transactions, paddingValues)
                 }
-
-                LinearProgressIndicator(
-                    progress = (totalSavings / totalIncome).toFloat(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 16.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = Color(0xFF43A047),
-                    trackColor = Color.LightGray.copy(alpha = 0.3f)
-                )
             }
+            null -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+        }
+    }
+}
 
-            // Gráfico de distribución de gastos
-            Card(
+@Composable
+fun ReportContent(
+    transactions: List<Transaction>,
+    paddingValues: PaddingValues
+) {
+    val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
+
+    // Calcular datos para los reportes
+    val expenses = transactions.filter { it.isExpense }
+    val incomes = transactions.filter { !it.isExpense }
+
+    // Importante: Convertir String a Double ya que amount es String en Transaction
+    val totalExpenses = expenses.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val totalIncomes = incomes.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val balance = totalIncomes - totalExpenses
+
+    // Agrupar gastos por categoría
+    val categoriesMap = expenses.groupBy { it.category }
+    val expenseCategories = categoriesMap.map { (category, categoryTransactions) ->
+        val amount = categoryTransactions.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+        val color = when (category) {
+            "Alimentación" -> Color(0xFFE53935)
+            "Transporte" -> Color(0xFF1976D2)
+            "Entretenimiento" -> Color(0xFFFFA000)
+            "Servicios" -> Color(0xFF43A047)
+            else -> Color(0xFF7E57C2)
+        }
+        ExpenseCategory(category, amount, color)
+    }.sortedByDescending { it.amount }
+
+    // Agrupar gastos por mes
+    val dateFormat = SimpleDateFormat("yyyy-MM", Locale.getDefault())
+    val monthFormat = SimpleDateFormat("MMM", Locale("es", "MX"))
+
+    val monthlyExpenses = try {
+        expenses.groupBy {
+            dateFormat.format(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(it.date) ?: Date())
+        }.mapKeys { (key, _) ->
+            val date = SimpleDateFormat("yyyy-MM", Locale.getDefault()).parse(key) ?: Date()
+            monthFormat.format(date)
+        }.mapValues { (_, monthTransactions) ->
+            monthTransactions.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+        }.toList().sortedBy { it.first }
+    } catch (e: Exception) {
+        emptyList<Pair<String, Double>>()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+            .verticalScroll(rememberScrollState())
+    ) {
+        // Resumen
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    .padding(16.dp)
             ) {
-                ExpenseChart(
-                    totalAmount = totalExpenses,
-                    categories = expenseCategories,
-                    modifier = Modifier.fillMaxWidth()
+                Text(
+                    text = "Resumen Financiero",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
                 )
-            }
 
-            // Gráfico de gastos mensuales
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    FinancialInfoItem(
+                        title = "Ingresos",
+                        amount = totalIncomes,
+                        color = Color(0xFF43A047)
+                    )
+
+                    FinancialInfoItem(
+                        title = "Gastos",
+                        amount = totalExpenses,
+                        color = Color(0xFFE53935)
+                    )
+
+                    FinancialInfoItem(
+                        title = "Balance",
+                        amount = balance,
+                        color = if (balance >= 0) Color(0xFF43A047) else Color(0xFFE53935)
+                    )
+                }
+            }
+        }
+
+        // Gráfico de distribución de gastos por categoría
+        if (expenseCategories.isNotEmpty()) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                MonthlySummaryChart(
-                    monthsData = monthlyData,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // Sección de recomendaciones
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
                     Text(
-                        text = "Recomendaciones",
+                        text = "Distribución de Gastos",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
 
-                    RecommendationItem(
-                        icon = Icons.Default.Restaurant,
-                        title = "Alimentación",
-                        description = "Puedes reducir tus gastos en alimentación cocinando más en casa.",
-                        iconTint = Color(0xFFE53935)
-                    )
-
-                    Divider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    RecommendationItem(
-                        icon = Icons.Default.DirectionsCar,
-                        title = "Transporte",
-                        description = "Considera opciones de transporte compartido para reducir gastos.",
-                        iconTint = Color(0xFF1976D2)
-                    )
-
-                    Divider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    RecommendationItem(
-                        icon = Icons.Default.TheaterComedy,
-                        title = "Entretenimiento",
-                        description = "Busca alternativas gratuitas o de bajo costo para tu entretenimiento.",
-                        iconTint = Color(0xFFFFA000)
+                    ExpenseChart(
+                        totalAmount = totalExpenses,
+                        categories = expenseCategories,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
+        }
 
-            // Botón para descargar reporte
-            Button(
-                onClick = { /* Lógica para descargar el reporte */ },
+        // Gráfico de gastos mensuales
+        if (monthlyExpenses.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Gastos Mensuales",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    MonthlySummaryChart(
+                        monthsData = monthlyExpenses,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        // Categorías más gastadas
+        if (expenseCategories.isNotEmpty()) {
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = null
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Descargar Reporte")
-            }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Principales Categorías de Gasto",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                    expenseCategories.take(3).forEach { category ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(category.color)
+                            )
+
+                            Text(
+                                text = category.name,
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .weight(1f)
+                            )
+
+                            Text(
+                                text = currencyFormatter.format(category.amount),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
 @Composable
-fun SummaryCard(
+fun FinancialInfoItem(
     title: String,
     amount: Double,
-    icon: ImageVector,
-    iconTint: Color,
-    containerColor: Color,
-    modifier: Modifier = Modifier
+    color: Color
 ) {
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
 
-    Card(
-        modifier = modifier,
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(containerColor)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint
-                )
-            }
+        Text(
+            text = title,
+            color = Color.Gray,
+            fontSize = 14.sp
+        )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = title,
-                fontSize = 14.sp,
-                color = Color.Black.copy(alpha = 0.7f)
-            )
-
-            Text(
-                text = currencyFormatter.format(amount),
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = Color.Black
-            )
-        }
-    }
-}
-
-@Composable
-fun RecommendationItem(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    iconTint: Color
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.LightGray.copy(alpha = 0.2f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 16.dp)
-        ) {
-            Text(
-                text = title,
-                fontWeight = FontWeight.Medium,
-                fontSize = 16.sp
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = description,
-                color = Color.Gray,
-                fontSize = 14.sp
-            )
-        }
+        Text(
+            text = currencyFormatter.format(amount),
+            color = color,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+        )
     }
 }

@@ -12,151 +12,154 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.mydeal.view.components.TransactionItem
+import com.example.mydeal.model.api.ApiResponse
+import com.example.mydeal.model.api.RetrofitClient
+import com.example.mydeal.ui.theme.LightGreen
 import com.example.mydeal.view.navigation.Screen
+import kotlinx.coroutines.launch
+import retrofit2.Response
+import retrofit2.http.GET
+import retrofit2.http.Header
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.Locale
 
-data class TransactionData(
+// Modelos de datos
+data class Transaction(
     val id: String,
-    val amount: Double,
+    val amount: String,
+    val isExpense: Boolean,
     val description: String,
     val category: String,
     val date: String,
-    val isExpense: Boolean,
-    val hasReceipt: Boolean = false
+    val isRecurring: Boolean,
+    val recurringPeriod: String,
+    val receiptUrl: String?,
+    val location: String?
 )
+
+data class TransactionApiResponse(
+    val message: String,
+    val data: List<Transaction>
+)
+
+// Interface para el servicio de API
+interface TransactionApi {
+    @GET("transactions")
+    suspend fun getTransactions(@Header("Authorization") token: String): Response<TransactionApiResponse>
+}
+
+// ViewModel para manejar las transacciones
+class TransactionListViewModel : ViewModel() {
+    private val _transactionsResult = MutableLiveData<ApiResponse<List<Transaction>>>()
+    val transactionsResult: LiveData<ApiResponse<List<Transaction>>> = _transactionsResult
+
+    fun fetchTransactions(context: android.content.Context) {
+        _transactionsResult.value = ApiResponse.Loading
+
+        viewModelScope.launch {
+            try {
+                val authService = com.example.mydeal.model.service.AuthService(context)
+                if (!authService.isAuthenticated()) {
+                    _transactionsResult.value = ApiResponse.Error("No autenticado")
+                    return@launch
+                }
+
+                val token = authService.getAuthToken()
+                val api = RetrofitClient.getAuthInstance(context).create(TransactionApi::class.java)
+                val response = api.getTransactions(token)
+
+                if (response.isSuccessful) {
+                    val body = response.body()
+                    if (body != null) {
+                        _transactionsResult.value = ApiResponse.Success(body.data)
+                    } else {
+                        _transactionsResult.value = ApiResponse.Error("Respuesta vacía")
+                    }
+                } else {
+                    _transactionsResult.value = ApiResponse.Error("Error: ${response.code()} - ${response.message()}")
+                }
+            } catch (e: Exception) {
+                _transactionsResult.value = ApiResponse.Error("Error de conexión: ${e.message}")
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TransactionListScreen(navController: NavController) {
+fun TransactionListScreen(
+    navController: NavController,
+    viewModel: TransactionListViewModel = viewModel()
+) {
     // Estados para la UI
     var searchQuery by remember { mutableStateOf("") }
     var isSearchVisible by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("Todos") }
     var showFilterOptions by remember { mutableStateOf(false) }
 
-    // Datos simulados de transacciones
-    val transactionsList = remember {
-        listOf(
-            TransactionData(
-                id = "1",
-                amount = 1250.00,
-                description = "Supermercado",
-                category = "Alimentación",
-                date = "26 Mar, 2025",
-                isExpense = true,
-                hasReceipt = true
-            ),
-            TransactionData(
-                id = "2",
-                amount = 5000.00,
-                description = "Transferencia recibida",
-                category = "Ingreso",
-                date = "25 Mar, 2025",
-                isExpense = false
-            ),
-            TransactionData(
-                id = "3",
-                amount = 450.50,
-                description = "Restaurante",
-                category = "Alimentación",
-                date = "23 Mar, 2025",
-                isExpense = true,
-                hasReceipt = true
-            ),
-            TransactionData(
-                id = "4",
-                amount = 350.00,
-                description = "Gasolina",
-                category = "Transporte",
-                date = "21 Mar, 2025",
-                isExpense = true
-            ),
-            TransactionData(
-                id = "5",
-                amount = 1200.00,
-                description = "Renta de oficina",
-                category = "Trabajo",
-                date = "20 Mar, 2025",
-                isExpense = true,
-                hasReceipt = true
-            ),
-            TransactionData(
-                id = "6",
-                amount = 3500.00,
-                description = "Pago de cliente",
-                category = "Ingreso",
-                date = "18 Mar, 2025",
-                isExpense = false,
-                hasReceipt = true
-            ),
-            TransactionData(
-                id = "7",
-                amount = 899.99,
-                description = "Cena con amigos",
-                category = "Entretenimiento",
-                date = "15 Mar, 2025",
-                isExpense = true
-            ),
-            TransactionData(
-                id = "8",
-                amount = 599.99,
-                description = "Netflix anual",
-                category = "Suscripciones",
-                date = "12 Mar, 2025",
-                isExpense = true
-            ),
-            TransactionData(
-                id = "9",
-                amount = 320.00,
-                description = "Medicinas",
-                category = "Salud",
-                date = "10 Mar, 2025",
-                isExpense = true,
-                hasReceipt = true
-            ),
-            TransactionData(
-                id = "10",
-                amount = 2500.00,
-                description = "Bono trimestral",
-                category = "Ingreso",
-                date = "08 Mar, 2025",
-                isExpense = false
-            )
-        )
+    val context = LocalContext.current
+    val transactionsResult by viewModel.transactionsResult.observeAsState()
+    val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    val displayFormatter = SimpleDateFormat("dd MMM, yyyy", Locale("es", "MX"))
+
+    // Cargar datos al iniciar la pantalla
+    LaunchedEffect(Unit) {
+        viewModel.fetchTransactions(context)
     }
 
-    // Filtro de transacciones
+    // Formato de moneda
+    val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
+
+    // Obtener la lista de transacciones o una lista vacía si hay error o está cargando
+    val transactions = when (transactionsResult) {
+        is ApiResponse.Success -> (transactionsResult as ApiResponse.Success<List<Transaction>>).data
+        else -> emptyList()
+    }
+
+    // Filtrar las transacciones
     val filteredTransactions = when (selectedFilter) {
-        "Gastos" -> transactionsList.filter { it.isExpense }
-        "Ingresos" -> transactionsList.filter { !it.isExpense }
-        "Con comprobantes" -> transactionsList.filter { it.hasReceipt }
-        else -> transactionsList
+        "Gastos" -> transactions.filter { it.isExpense }
+        "Ingresos" -> transactions.filter { !it.isExpense }
+        "Con comprobantes" -> transactions.filter { !it.receiptUrl.isNullOrEmpty() }
+        else -> transactions
     }.filter {
         if (searchQuery.isEmpty()) true
         else it.description.contains(searchQuery, ignoreCase = true) ||
                 it.category.contains(searchQuery, ignoreCase = true)
     }
 
-    // Agrupación por fecha
-    val groupedTransactions = filteredTransactions.groupBy { it.date }
+    // Formatear la fecha para agrupar y mostrar
+    val formattedTransactions = filteredTransactions.map {
+        val parsedDate = dateFormatter.parse(it.date)
+        val formattedDate = if (parsedDate != null) displayFormatter.format(parsedDate) else it.date
+        it to formattedDate
+    }
+
+    // Agrupar por fecha
+    val groupedTransactions = formattedTransactions.groupBy { it.second }
+        .mapValues { entry -> entry.value.map { it.first } }
 
     // Calcular totales
-    val totalIncome = transactionsList.filter { !it.isExpense }.sumOf { it.amount }
-    val totalExpense = transactionsList.filter { it.isExpense }.sumOf { it.amount }
+    val totalIncome = transactions.filter { !it.isExpense }.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+    val totalExpense = transactions.filter { it.isExpense }.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
     val balance = totalIncome - totalExpense
-
-    val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
 
     Scaffold(
         topBar = {
@@ -217,7 +220,7 @@ fun TransactionListScreen(navController: NavController) {
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        containerColor = LightGreen,
                         titleContentColor = Color.White,
                         navigationIconContentColor = Color.White,
                         actionIconContentColor = Color.White
@@ -273,7 +276,7 @@ fun TransactionListScreen(navController: NavController) {
         floatingActionButton = {
             FloatingActionButton(
                 onClick = { navController.navigate(Screen.AddTransaction.route) },
-                containerColor = MaterialTheme.colorScheme.primary
+                containerColor = LightGreen
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
@@ -372,72 +375,137 @@ fun TransactionListScreen(navController: NavController) {
                 }
             }
 
-            // Lista de transacciones
-            if (filteredTransactions.isEmpty()) {
-                // Mensaje cuando no hay transacciones
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
+            // Estado de carga y errores
+            when (transactionsResult) {
+                is ApiResponse.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.SearchOff,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = Color.Gray
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = "No se encontraron transacciones",
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 18.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = if (searchQuery.isNotEmpty())
-                                "Intenta con otros términos de búsqueda"
-                            else
-                                "Agrega una nueva transacción para comenzar",
-                            color = Color.Gray,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
+                        CircularProgressIndicator()
                     }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    groupedTransactions.forEach { (date, transactions) ->
-                        item {
-                            // Encabezado de grupo por fecha
-                            Text(
-                                text = date,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+                is ApiResponse.Error -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = Color.Gray
                             )
-                        }
 
-                        items(transactions) { transaction ->
-                            TransactionListItem(
-                                transaction = transaction,
-                                onItemClick = {
-                                    navController.navigate(Screen.TransactionDetail.createRoute(transaction.id))
-                                }
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text(
+                                text = "Error al cargar las transacciones",
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 18.sp
                             )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = (transactionsResult as ApiResponse.Error).message,
+                                color = Color.Gray,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Button(
+                                onClick = { viewModel.fetchTransactions(context) }
+                            ) {
+                                Text("Reintentar")
+                            }
                         }
                     }
+                }
+                is ApiResponse.Success -> {
+                    // Lista de transacciones
+                    if (filteredTransactions.isEmpty()) {
+                        // Mensaje cuando no hay transacciones
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SearchOff,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = Color.Gray
+                                )
 
-                    // Espacio adicional al final para evitar que el FAB oculte el último elemento
-                    item {
-                        Spacer(modifier = Modifier.height(80.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Text(
+                                    text = "No se encontraron transacciones",
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 18.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = if (searchQuery.isNotEmpty())
+                                        "Intenta con otros términos de búsqueda"
+                                    else
+                                        "Agrega una nueva transacción para comenzar",
+                                    color = Color.Gray,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            groupedTransactions.forEach { (date, transactions) ->
+                                item {
+                                    // Encabezado de grupo por fecha
+                                    Text(
+                                        text = date,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+                                    )
+                                }
+
+                                items(transactions) { transaction ->
+                                    TransactionListItem(
+                                        transaction = transaction,
+                                        onItemClick = {
+                                            navController.navigate(Screen.TransactionDetail.createRoute(transaction.id))
+                                        }
+                                    )
+                                }
+                            }
+
+                            // Espacio adicional al final para evitar que el FAB oculte el último elemento
+                            item {
+                                Spacer(modifier = Modifier.height(80.dp))
+                            }
+                        }
+                    }
+                }
+                null -> {
+                    // Estado inicial
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
                 }
             }
@@ -447,10 +515,11 @@ fun TransactionListScreen(navController: NavController) {
 
 @Composable
 fun TransactionListItem(
-    transaction: TransactionData,
+    transaction: Transaction,
     onItemClick: () -> Unit
 ) {
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
+    val amount = transaction.amount.toDoubleOrNull() ?: 0.0
 
     Card(
         modifier = Modifier
@@ -515,14 +584,14 @@ fun TransactionListItem(
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = if (transaction.isExpense)
-                        "- ${currencyFormatter.format(transaction.amount)}"
+                        "- ${currencyFormatter.format(amount)}"
                     else
-                        "+ ${currencyFormatter.format(transaction.amount)}",
+                        "+ ${currencyFormatter.format(amount)}",
                     fontWeight = FontWeight.Bold,
                     color = if (transaction.isExpense) Color(0xFFE53935) else Color(0xFF43A047)
                 )
 
-                if (transaction.hasReceipt) {
+                if (!transaction.receiptUrl.isNullOrEmpty()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(top = 4.dp)

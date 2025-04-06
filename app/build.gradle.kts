@@ -37,6 +37,20 @@ android {
     buildFeatures {
         compose = true
     }
+
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/LICENSE.md",
+                "META-INF/LICENSE-notice.md",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE.txt",
+                "META-INF/*.kotlin_module",
+                // --- Línea añadida ---
+                "META-INF/NOTICE.md"
+            )
+        }
+    }
 }
 
 dependencies {
@@ -92,6 +106,7 @@ dependencies {
 // Location
     implementation("com.google.android.gms:play-services-location:21.0.1")
     implementation(libs.androidx.runtime.livedata)
+    implementation(libs.androidx.databinding.compiler.common)
 
 // Testing
     testImplementation("junit:junit:4.13.2")

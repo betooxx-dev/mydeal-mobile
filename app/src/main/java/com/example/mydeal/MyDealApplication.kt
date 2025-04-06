@@ -1,6 +1,7 @@
 package com.example.mydeal
 
 import android.app.Application
+import com.example.mydeal.appModule
 import com.example.mydeal.feature_financial.di.financialCalculatorModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -16,8 +17,8 @@ class MyDealApplication : Application() {
             androidContext(this@MyDealApplication)
             modules(
                 listOf(
+                    appModule,
                     financialCalculatorModule
-                    // Puedes agregar otros módulos aquí si los tienes
                 )
             )
         }

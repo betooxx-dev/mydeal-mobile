@@ -1,5 +1,18 @@
 package com.example.mydeal.view.screens.transaction
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.net.Uri
+import android.os.Bundle
+import android.os.Looper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,52 +27,81 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.mydeal.model.data.Transaction
+import com.example.mydeal.model.api.ApiResponse
+import com.example.mydeal.model.data.RecurringPeriod
 import com.example.mydeal.view.components.CustomButton
 import com.example.mydeal.view.components.CustomTextField
 import com.example.mydeal.view.navigation.Screen
+import com.example.mydeal.viewmodel.TransactionViewModel
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
+import android.os.Handler
+import com.example.mydeal.ui.theme.LightGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionScreen(
     navController: NavController,
     transactionId: String = "",
-    isEditing: Boolean = false
+    isEditing: Boolean = false,
+    viewModel: TransactionViewModel = viewModel()
 ) {
-    // Estados para el formulario
-    var amount by remember { mutableStateOf(if (isEditing) "1250.00" else "") }
-    var description by remember { mutableStateOf(if (isEditing) "Compras del supermercado" else "") }
-    var date by remember { mutableStateOf(if (isEditing) "2025-03-26" else SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) }
-    var category by remember { mutableStateOf(if (isEditing) "Alimentación" else "") }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(transactionId) {
+        if (isEditing && transactionId.isNotEmpty()) {
+            viewModel.getTransactionById(transactionId)
+        }
+    }
+
+    val transactionDetailResult by viewModel.transactionDetail.observeAsState()
+    val uploadReceiptResult by viewModel.uploadReceiptResult.observeAsState()
+    val createTransactionResult by viewModel.createTransactionResult.observeAsState()
+
+    var amount by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var date by remember { mutableStateOf(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) }
+    var category by remember { mutableStateOf("") }
     var isExpense by remember { mutableStateOf(true) }
     var showDatePicker by remember { mutableStateOf(false) }
     var showCategorySelector by remember { mutableStateOf(false) }
 
-    // Estados para transacciones programadas
     var isRecurring by remember { mutableStateOf(false) }
-    var recurringPeriod by remember { mutableStateOf(Transaction.RecurringPeriod.NONE) }
+    var recurringPeriod by remember { mutableStateOf(RecurringPeriod.NONE) }
     var showRecurringOptions by remember { mutableStateOf(false) }
     var recurringEndDate by remember { mutableStateOf<String?>(null) }
     var showEndDatePicker by remember { mutableStateOf(false) }
 
-    // Para validación
+    var receiptImageUri by remember { mutableStateOf<Uri?>(null) }
+    var receiptUrl by remember { mutableStateOf<String?>(null) }
+
+    var useLocation by remember { mutableStateOf(false) }
+    var currentLocation by remember { mutableStateOf<String?>(null) }
+
     var amountError by remember { mutableStateOf("") }
     var descriptionError by remember { mutableStateOf("") }
 
-    // Valores para el selector de categorías
     val expenseCategories = listOf(
         "Alimentación" to Icons.Filled.Restaurant,
         "Transporte" to Icons.Filled.DirectionsCar,
@@ -80,16 +122,181 @@ fun AddTransactionScreen(
         "Otros" to Icons.Filled.Category
     )
 
-    // Opciones de recurrencia
     val recurringOptions = listOf(
-        "No se repite" to Transaction.RecurringPeriod.NONE,
-        "Diariamente" to Transaction.RecurringPeriod.DAILY,
-        "Semanalmente" to Transaction.RecurringPeriod.WEEKLY,
-        "Mensualmente" to Transaction.RecurringPeriod.MONTHLY,
-        "Anualmente" to Transaction.RecurringPeriod.YEARLY
+        "No se repite" to RecurringPeriod.NONE,
+        "Diariamente" to RecurringPeriod.DAILY,
+        "Semanalmente" to RecurringPeriod.WEEKLY,
+        "Mensualmente" to RecurringPeriod.MONTHLY,
+        "Anualmente" to RecurringPeriod.YEARLY
     )
 
-    // Funciones de validación
+    fun createTempImageUri(): Uri {
+        val tempFile = File.createTempFile(
+            "receipt_",
+            ".jpg",
+            context.cacheDir
+        )
+        return FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            tempFile
+        )
+    }
+
+    val getCurrentLocationWithPermissions = {
+        getCurrentLocation(context) { location ->
+            currentLocation = location
+        }
+    }
+
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        when {
+            permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) ||
+                    permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false) -> {
+                // Permiso concedido, obtener ubicación
+                getCurrentLocationWithPermissions()
+            }
+            else -> {
+                // Permiso denegado
+                useLocation = false
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Permiso de ubicación denegado. No se puede obtener la ubicación.")
+                }
+            }
+        }
+    }
+
+    val getLocation = {
+        if (useLocation) {
+            // Comprobar y solicitar permisos primero
+            when {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED -> {
+                    // Ya tenemos permiso, obtener ubicación
+                    getCurrentLocationWithPermissions()
+                }
+                else -> {
+                    // Solicitar permisos
+                    locationPermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                }
+            }
+        } else {
+            currentLocation = null
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        if (success) {
+            receiptImageUri?.let { uri ->
+                viewModel.uploadReceipt(uri)
+            }
+        } else {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Captura de foto cancelada.")
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            receiptImageUri = uri
+            viewModel.uploadReceipt(uri)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            try {
+                val uri = createTempImageUri()
+                receiptImageUri = uri
+                cameraLauncher.launch(uri)
+            } catch (e: Exception) {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Error al preparar la cámara: ${e.message}")
+                }
+            }
+        } else {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar("Permiso de cámara denegado. No se puede tomar foto.")
+            }
+        }
+    }
+
+
+    LaunchedEffect(transactionDetailResult) {
+        if (isEditing && transactionDetailResult is ApiResponse.Success) {
+            val transaction = (transactionDetailResult as ApiResponse.Success).data
+            amount = transaction.amount.toString()
+            description = transaction.description
+            category = transaction.category
+            isExpense = transaction.isExpense
+            date = transaction.date.substring(0, 10)
+            isRecurring = transaction.isRecurring
+            recurringPeriod = transaction.recurringPeriod
+            receiptUrl = transaction.receiptUrl
+            currentLocation = transaction.location
+            useLocation = transaction.location != null
+        }
+    }
+
+    LaunchedEffect(uploadReceiptResult) {
+        when (uploadReceiptResult) {
+            is ApiResponse.Success -> {
+                receiptUrl = (uploadReceiptResult as ApiResponse.Success<String>).data
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Imagen subida correctamente")
+                }
+            }
+            is ApiResponse.Error -> {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Error: ${(uploadReceiptResult as ApiResponse.Error).message}")
+                }
+            }
+            else -> {}
+        }
+    }
+
+    LaunchedEffect(createTransactionResult) {
+        when (createTransactionResult) {
+            is ApiResponse.Success -> {
+                val transaction = (createTransactionResult as ApiResponse.Success).data
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar(
+                        if (isEditing) "Transacción actualizada" else "Transacción creada"
+                    )
+                }
+                navController.navigate(
+                    if (isEditing) Screen.TransactionDetail.createRoute(transaction.id)
+                    else Screen.TransactionList.route
+                ) {
+                    popUpTo(Screen.TransactionList.route)
+                }
+            }
+            is ApiResponse.Error -> {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Error: ${(createTransactionResult as ApiResponse.Error).message}")
+                }
+            }
+            else -> {}
+        }
+    }
+
     val validateAmount: () -> Boolean = {
         when {
             amount.isEmpty() -> {
@@ -128,10 +335,10 @@ fun AddTransactionScreen(
         }
     }
 
-    // Selección de fecha
     val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     val selectedDate = remember { mutableStateOf(dateFormat.parse(date) ?: Date()) }
     val selectedEndDate = remember { mutableStateOf(recurringEndDate?.let { dateFormat.parse(it) } ?: Date()) }
+
 
     Scaffold(
         topBar = {
@@ -151,12 +358,13 @@ fun AddTransactionScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
+                    containerColor = LightGreen,
                     titleContentColor = Color.White,
                     navigationIconContentColor = Color.White
                 )
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -166,7 +374,6 @@ fun AddTransactionScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Selector de tipo de transacción (Gasto/Ingreso)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -197,7 +404,6 @@ fun AddTransactionScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Campo de monto
             CustomTextField(
                 value = amount,
                 onValueChange = { amount = it },
@@ -211,7 +417,6 @@ fun AddTransactionScreen(
                 )
             )
 
-            // Selector de Categoría
             OutlinedCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -253,7 +458,6 @@ fun AddTransactionScreen(
                 }
             }
 
-            // Selector de categoría expandido
             AnimatedVisibility(visible = showCategorySelector) {
                 Card(
                     modifier = Modifier
@@ -271,7 +475,6 @@ fun AddTransactionScreen(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
 
-                        // Lista de categorías según tipo de transacción
                         val categories = if (isExpense) expenseCategories else incomeCategories
 
                         categories.forEach { (cat, icon) ->
@@ -322,7 +525,6 @@ fun AddTransactionScreen(
                 }
             }
 
-            // Campo de descripción
             CustomTextField(
                 value = description,
                 onValueChange = { description = it },
@@ -336,7 +538,6 @@ fun AddTransactionScreen(
                 )
             )
 
-            // Selector de fecha
             OutlinedCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -378,7 +579,6 @@ fun AddTransactionScreen(
                 }
             }
 
-            // DatePicker Dialog
             if (showDatePicker) {
                 DatePickerDialog(
                     onDismissRequest = { showDatePicker = false },
@@ -406,7 +606,6 @@ fun AddTransactionScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // NUEVA SECCIÓN: Opciones de recurrencia
             OutlinedCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -450,7 +649,7 @@ fun AddTransactionScreen(
                                 if (it) {
                                     showRecurringOptions = true
                                 } else {
-                                    recurringPeriod = Transaction.RecurringPeriod.NONE
+                                    recurringPeriod = RecurringPeriod.NONE
                                     recurringEndDate = null
                                 }
                             }
@@ -469,7 +668,6 @@ fun AddTransactionScreen(
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
 
-                            // Selector de período
                             OutlinedCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -511,7 +709,6 @@ fun AddTransactionScreen(
                                 }
                             }
 
-                            // Fecha de finalización (opcional)
                             OutlinedCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -556,7 +753,6 @@ fun AddTransactionScreen(
                 }
             }
 
-            // Opciones de recurrencia expandidas
             if (showRecurringOptions) {
                 AlertDialog(
                     onDismissRequest = { showRecurringOptions = false },
@@ -597,7 +793,6 @@ fun AddTransactionScreen(
                 )
             }
 
-            // DatePicker para fecha de finalización
             if (showEndDatePicker) {
                 DatePickerDialog(
                     onDismissRequest = { showEndDatePicker = false },
@@ -629,16 +824,38 @@ fun AddTransactionScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Botón de foto de comprobante
             OutlinedCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .clickable {
-                        // En una implementación real, navegaríamos a la pantalla de captura de comprobante
-                        if (isEditing) {
-                            navController.navigate(Screen.ReceiptCapture.createRoute(transactionId))
-                        }
+                        showDialog(
+                            context = context,
+                            onCamera = {
+                                when (PackageManager.PERMISSION_GRANTED) {
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.CAMERA
+                                    ) -> {
+                                        try {
+                                            val uri = createTempImageUri()
+                                            receiptImageUri = uri
+                                            cameraLauncher.launch(uri)
+                                        } catch (e: Exception) {
+                                            coroutineScope.launch {
+                                                snackbarHostState.showSnackbar("Error al abrir la cámara: ${e.message}")
+                                            }
+                                        }
+                                    }
+                                    else -> {
+                                        permissionLauncher.launch(Manifest.permission.CAMERA)
+                                    }
+                                }
+                            },
+                            onGallery = {
+                                galleryLauncher.launch("image/*")
+                            }
+                        )
                     }
             ) {
                 Row(
@@ -672,23 +889,33 @@ fun AddTransactionScreen(
                         )
 
                         Text(
-                            text = if (isEditing) "Imagen adjunta" else "Agregar imagen de comprobante",
+                            text = when {
+                                uploadReceiptResult is ApiResponse.Loading -> "Subiendo imagen..."
+                                receiptUrl != null -> "Imagen subida correctamente"
+                                receiptImageUri != null -> "Imagen seleccionada"
+                                else -> "Agregar imagen de comprobante"
+                            },
                             fontSize = 12.sp,
                             color = Color.Gray
                         )
                     }
 
-                    if (!isEditing) {
+                    if (receiptUrl == null && uploadReceiptResult !is ApiResponse.Loading) {
                         Icon(
                             imageVector = Icons.Default.Add,
                             contentDescription = null,
                             tint = Color.Gray
                         )
-                    } else {
+                    } else if (receiptUrl != null) {
                         Icon(
-                            imageVector = Icons.Default.Edit,
+                            imageVector = Icons.Default.CheckCircle,
                             contentDescription = null,
-                            tint = Color.Gray
+                            tint = Color(0xFF43A047)
+                        )
+                    } else if (uploadReceiptResult is ApiResponse.Loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
                         )
                     }
                 }
@@ -696,7 +923,6 @@ fun AddTransactionScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Botón de ubicación
             OutlinedCard(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -733,22 +959,28 @@ fun AddTransactionScreen(
                         )
 
                         Text(
-                            text = if (isEditing) "Plaza Las Américas, Chiapas" else "Usar mi ubicación actual",
+                            text = if (currentLocation != null) currentLocation!! else "Usar mi ubicación actual",
                             fontSize = 12.sp,
                             color = Color.Gray
                         )
                     }
 
                     Switch(
-                        checked = isEditing,
-                        onCheckedChange = { /* Aquí implementaríamos la lógica para obtener la ubicación */ }
+                        checked = useLocation,
+                        onCheckedChange = {
+                            useLocation = it
+                            if (it) {
+                                getLocation()
+                            } else {
+                                currentLocation = null
+                            }
+                        }
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Botón guardar
             CustomButton(
                 text = if (isEditing) "Actualizar Transacción" else "Guardar Transacción",
                 onClick = {
@@ -756,39 +988,45 @@ fun AddTransactionScreen(
                     val isDescriptionValid = validateDescription()
 
                     if (isAmountValid && isDescriptionValid && category.isNotEmpty()) {
-                        // Aquí creamos o actualizamos la transacción con los datos del formulario
-                        val transaction = Transaction().apply {
-                            id = if (isEditing) transactionId else UUID.randomUUID().toString()
-                            amount = amount  // No convertir a Double, mantener como String
-                            description = description
-                            category = category
-                            date = date
-                            isExpense = isExpense
-                            isRecurring = isRecurring
-                            recurringPeriod = recurringPeriod
-                            recurringEndDate = recurringEndDate
-                        }
-
-                        // En una implementación real, llamaríamos al ViewModel para guardar los datos
-                        if (isEditing) {
-                            navController.navigate(Screen.TransactionDetail.createRoute(transactionId)) {
-                                popUpTo(Screen.TransactionList.route)
+                        viewModel.createTransaction(
+                            amount = amount.toDouble(),
+                            isExpense = isExpense,
+                            description = description,
+                            category = category,
+                            date = date,
+                            isRecurring = isRecurring,
+                            recurringPeriod = if (isRecurring) recurringPeriod else RecurringPeriod.NONE,
+                            receiptUrl = receiptUrl,
+                            location = currentLocation
+                        )
+                    } else {
+                        if (category.isEmpty()) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Por favor selecciona una categoría")
                             }
-                        } else {
-                            navController.navigate(Screen.TransactionList.route)
                         }
                     }
-                }
+                },
+                enabled = createTransactionResult !is ApiResponse.Loading
             )
+
+            if (createTransactionResult is ApiResponse.Loading) {
+                Spacer(modifier = Modifier.height(16.dp))
+                CircularProgressIndicator()
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             if (isEditing) {
-                // Botón de eliminar (solo en modo edición)
                 CustomButton(
                     text = "Eliminar Transacción",
                     onClick = {
-                        // Aquí implementaríamos la lógica para eliminar la transacción
-                        navController.navigate(Screen.TransactionList.route)
+                        // TODO: Implement delete logic in ViewModel and call it here
+                        // viewModel.deleteTransaction(transactionId)
+                        // For now, just navigate back
+                        navController.navigate(Screen.TransactionList.route) {
+                            popUpTo(Screen.TransactionList.route) { inclusive = true }
+                        }
                     },
                     isSecondary = true
                 )
@@ -845,5 +1083,118 @@ fun TransactionTypeButton(
                 color = contentColor
             )
         }
+    }
+}
+
+fun showDialog(context: Context, onCamera: () -> Unit, onGallery: () -> Unit) {
+    val builder = android.app.AlertDialog.Builder(context)
+    builder.setTitle("Seleccionar imagen")
+    val options = arrayOf("Tomar foto", "Elegir de la galería")
+
+    builder.setItems(options) { dialog, which ->
+        when (which) {
+            0 -> onCamera()
+            1 -> onGallery()
+        }
+        dialog.dismiss()
+    }
+
+    builder.show()
+}
+
+@SuppressLint("MissingPermission")
+fun getCurrentLocation(context: Context, onLocationObtained: (String) -> Unit) {
+    try {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+        // Verificar si hay algún proveedor disponible
+        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) &&
+            !locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            onLocationObtained("Ubicación desactivada en el dispositivo")
+            return
+        }
+
+        val locationListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                val geocoder = Geocoder(context, Locale.getDefault())
+                try {
+                    val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                    if (addresses != null && addresses.isNotEmpty()) {
+                        val address = addresses[0]
+                        val addressString = StringBuilder()
+
+                        if (address.locality != null) {
+                            addressString.append(address.locality)
+                        }
+                        if (address.adminArea != null) {
+                            if (addressString.isNotEmpty()) addressString.append(", ")
+                            addressString.append(address.adminArea)
+                        }
+                        if (address.countryName != null) {
+                            if (addressString.isNotEmpty()) addressString.append(", ")
+                            addressString.append(address.countryName)
+                        }
+
+                        if (addressString.isNotEmpty()) {
+                            onLocationObtained(addressString.toString())
+                        } else {
+                            onLocationObtained("${location.latitude}, ${location.longitude}")
+                        }
+                    } else {
+                        onLocationObtained("${location.latitude}, ${location.longitude}")
+                    }
+                } catch (e: IOException) {
+                    onLocationObtained("${location.latitude}, ${location.longitude}")
+                }
+
+                locationManager.removeUpdates(this)
+            }
+
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {
+                onLocationObtained("Proveedor de ubicación desactivado")
+            }
+        }
+
+        // Determinar el mejor proveedor disponible
+        val provider = when {
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+            else -> null
+        }
+
+        if (provider == null) {
+            onLocationObtained("No hay proveedores de ubicación disponibles")
+            return
+        }
+
+        // Intentar obtener la última ubicación conocida primero
+        val lastLocation = locationManager.getLastKnownLocation(provider)
+        if (lastLocation != null) {
+            // Si tenemos una ubicación reciente, usarla inmediatamente
+            locationListener.onLocationChanged(lastLocation)
+        } else {
+            // De lo contrario, solicitar actualización
+            locationManager.requestLocationUpdates(
+                provider,
+                0,
+                0f,
+                locationListener,
+                Looper.getMainLooper()
+            )
+
+            // Establecer un timeout para la solicitud de ubicación
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    locationManager.removeUpdates(locationListener)
+                    onLocationObtained("Tiempo de espera agotado al obtener ubicación")
+                } catch (e: Exception) {
+                    // Ignorar, ya podría haberse cancelado
+                }
+            }, 30000) // 30 segundos de timeout
+        }
+    } catch (e: Exception) {
+        onLocationObtained("Error al obtener ubicación: ${e.message}")
     }
 }
