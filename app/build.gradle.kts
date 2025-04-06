@@ -40,6 +40,15 @@ android {
 }
 
 dependencies {
+    // Retrofit
+    implementation("com.squareup.retrofit2:retrofit:2.11.0") // Revisa la última versión
+
+    // Convertidor Gson
+    implementation("com.squareup.retrofit2:converter-gson:2.11.0") // Revisa la última versión (usa la misma que Retrofit)
+
+    // Opcional pero recomendado: OkHttp Logging Interceptor para depurar
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0") // Revisa la última versión de OkHttp compatible
+
     // Koin
     implementation("io.insert-koin:koin-core:3.5.6")
     implementation("io.insert-koin:koin-android:3.5.6")
