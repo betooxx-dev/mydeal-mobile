@@ -17,11 +17,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import com.example.mydeal.feature_financial.theme.LightGreen
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FinancialCalculatorScreen(
+    navController: NavController? = null,
     viewModel: FinancialCalculatorViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
@@ -66,9 +69,18 @@ fun FinancialCalculatorScreen(
                         fontWeight = FontWeight.Bold
                     )
                 },
+                navigationIcon = {
+                    IconButton(onClick = { navController?.popBackStack() }) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Volver"
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White
+                    containerColor = LightGreen,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
                 )
             )
         }
@@ -137,7 +149,8 @@ fun FinancialCalculatorScreen(
                                 years.toIntOrNull() ?: 0
                             )
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = LightGreen)
                     ) {
                         Text("Calcular Interés Compuesto")
                     }
@@ -174,7 +187,8 @@ fun FinancialCalculatorScreen(
                                 loanYears.toIntOrNull() ?: 0
                             )
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = LightGreen)
                     ) {
                         Text("Calcular Pago de Préstamo")
                     }
@@ -211,7 +225,8 @@ fun FinancialCalculatorScreen(
                                 savingYears.toIntOrNull() ?: 0
                             )
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = LightGreen)
                     ) {
                         Text("Calcular Proyección de Ahorro")
                     }
@@ -221,6 +236,8 @@ fun FinancialCalculatorScreen(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -245,7 +262,12 @@ fun FinancialInputField(
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 8.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = LightGreen,
+            focusedLabelColor = LightGreen,
+            cursorColor = LightGreen
+        )
     )
 }
 
@@ -259,8 +281,8 @@ fun CalculatorTypeButton(
     OutlinedButton(
         onClick = onClick,
         colors = ButtonDefaults.outlinedButtonColors(
-            containerColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-            contentColor = if (isSelected) Color.White else MaterialTheme.colorScheme.primary
+            containerColor = if (isSelected) LightGreen else Color.Transparent,
+            contentColor = if (isSelected) Color.White else LightGreen
         ),
         modifier = Modifier.width(100.dp)
     ) {
@@ -283,7 +305,7 @@ fun ResultCard(
             .fillMaxWidth()
             .padding(top = 16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
+            containerColor = Color(0xFFE8F5E9) // Color verde claro para el fondo
         )
     ) {
         Column(
@@ -295,12 +317,12 @@ fun ResultCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                color = LightGreen
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = Color(0xFF2E7D32), // Verde oscuro para el valor
                 fontWeight = FontWeight.Bold
             )
         }

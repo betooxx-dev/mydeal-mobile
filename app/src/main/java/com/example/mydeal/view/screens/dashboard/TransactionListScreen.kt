@@ -193,7 +193,13 @@ fun TransactionListScreen(
                                 isSearchVisible = false
                                 searchQuery = ""
                             } else {
-                                navController.popBackStack()
+                                // Navegar directamente al Dashboard en lugar de usar popBackStack()
+                                navController.navigate(Screen.Dashboard.route) {
+                                    // Esto limpiará la pila de navegación hasta el Dashboard
+                                    popUpTo(Screen.Dashboard.route) {
+                                        inclusive = false  // No incluimos el Dashboard en el pop
+                                    }
+                                }
                             }
                         }) {
                             Icon(

@@ -55,6 +55,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import android.os.Handler
+import android.util.Log
 import com.example.mydeal.ui.theme.LightGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,7 +72,14 @@ fun AddTransactionScreen(
 
     LaunchedEffect(transactionId) {
         if (isEditing && transactionId.isNotEmpty()) {
-            viewModel.getTransactionById(transactionId)
+            try {
+                viewModel.getTransactionById(transactionId)
+            } catch (e: Exception) {
+                // Manejar el error, mostrar un mensaje, etc.
+                Log.e("AddTransactionScreen", "Error cargando transacción: ${e.message}")
+                // Navegar de vuelta para evitar quedarse en una pantalla que causará crash
+                navController.popBackStack()
+            }
         }
     }
 

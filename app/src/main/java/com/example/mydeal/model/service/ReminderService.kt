@@ -34,7 +34,7 @@ class ReminderService : Service() {
 
     private val NOTIFICATION_ID = 1001
     private val CHANNEL_ID = "reminder_channel"
-    private val CHECK_INTERVAL = TimeUnit.HOURS.toMillis(1)
+    private val CHECK_INTERVAL = TimeUnit.SECONDS.toMillis(10) // 10 segundos en lugar de 1 hora
 
     override fun onCreate() {
         super.onCreate()
@@ -102,37 +102,38 @@ class ReminderService : Service() {
     }
 
     private fun checkUpcomingTransactions() {
-        val today = Calendar.getInstance()
-        val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, 1) }
+        // Crear transacciones de prueba con la fecha actual en lugar de mañana
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val currentDate = Calendar.getInstance()
 
-        val upcomingTransactions = listOf(
+        val testTransactions = listOf(
             Transaction().apply {
-                id = "upcoming1"
-                description = "Pago de Netflix"
+                id = "test1"
+                description = "Notificación de prueba 1"
                 amount = 199.00
-                date = dateFormat.format(tomorrow.time)
+                date = dateFormat.format(currentDate.time)
                 isExpense = true
-                category = "Suscripciones"
+                category = "Prueba"
             },
             Transaction().apply {
-                id = "upcoming2"
-                description = "Pago de servicios"
-                amount = 1200.00
-                date = dateFormat.format(tomorrow.time)
+                id = "test2"
+                description = "Notificación de prueba 2"
+                amount = 500.00
+                date = dateFormat.format(currentDate.time)
                 isExpense = true
-                category = "Servicios"
+                category = "Prueba"
             }
         )
 
-        for (transaction in upcomingTransactions) {
+        for (transaction in testTransactions) {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
             val notificationBuilder = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Próximo pago: ${transaction.description}")
-                .setContentText("Tienes un pago de ${transaction.amount} MXN programado para mañana")
+                .setContentTitle("Prueba: ${transaction.description}")
+                .setContentText("Esta es una notificación de prueba - $${transaction.amount} MXN")
                 .setSmallIcon(R.drawable.ic_launcher_foreground)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true) // La notificación desaparece al tocarla
 
             notificationManager.notify(transaction.id.hashCode(), notificationBuilder.build())
         }

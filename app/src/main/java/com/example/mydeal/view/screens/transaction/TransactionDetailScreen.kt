@@ -207,17 +207,6 @@ fun TransactionDetailScreen(
                             contentDescription = "Eliminar"
                         )
                     }
-
-                    IconButton(
-                        onClick = {
-                            navController.navigate(Screen.EditTransaction.createRoute(transactionId))
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Editar"
-                        )
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = LightGreen,
@@ -567,14 +556,6 @@ fun TransactionDetailScreen(
                                 .padding(16.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            CustomButton(
-                                text = "Editar",
-                                onClick = {
-                                    navController.navigate(Screen.EditTransaction.createRoute(transaction.id))
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-
                             CustomButton(
                                 text = "Volver a lista",
                                 onClick = {

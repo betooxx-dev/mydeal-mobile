@@ -109,11 +109,15 @@ class TransactionService(private val context: Context) {
         return withContext(Dispatchers.IO) {
             try {
                 val response = transactionApi.getTransactionById(id)
-
                 if (response.isSuccessful) {
-                    ApiResponse.Success(response.body()!!)
+                    val body = response.body()
+                    if (body != null) {
+                        ApiResponse.Success(body)
+                    } else {
+                        ApiResponse.Error("No se encontró la transacción")
+                    }
                 } else {
-                    ApiResponse.Error(response.errorBody()?.string() ?: "Error al obtener la transacción")
+                    ApiResponse.Error("Error al obtener la transacción: ${response.code()}")
                 }
             } catch (e: Exception) {
                 ApiResponse.Error("Error de conexión: ${e.message}")
